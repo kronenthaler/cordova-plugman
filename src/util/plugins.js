@@ -25,23 +25,36 @@ var http = require('http'),
     shell = require('shelljs'),
     child_process = require('child_process'),
     Q = require('q'),
-    xml_helpers = require('./xml-helpers');
+    xml_helpers = require('./xml-helpers'),
+    events = require('../events'),
+    tmp_dir;
 
 module.exports = {
     searchAndReplace:require('./search-and-replace'),
 
+    clonePluginGit:function(plugin_git_url, plugins_dir, options) {
+        return module.exports.clonePluginGitRepo(plugin_git_url, plugins_dir, options.subdir, options.git_ref).then(
+            function(dst){
+                // Keep location where we checked out git repo
+                options.plugin_src_dir = tmp_dir;
+                return dst;
+            }
+        );
+    },
+
     // Fetches plugin information from remote server.
     // Returns a promise.
     clonePluginGitRepo:function(plugin_git_url, plugins_dir, subdir, git_ref) {
+
         if(!shell.which('git')) {
             return Q.reject(new Error('"git" command line tool is not installed: make sure it is accessible on your PATH.'));
         }
-        var tmp_dir = path.join(os.tmpdir(), 'plugman-tmp' +(new Date).valueOf());
+        tmp_dir = path.join(os.tmpdir(), 'plugman', 'git', String((new Date).valueOf()));
 
         shell.rm('-rf', tmp_dir);
 
         var cmd = util.format('git clone "%s" "%s"', plugin_git_url, tmp_dir);
-        require('../../plugman').emit('verbose', 'Fetching plugin via git-clone command: ' + cmd);
+        events.emit('verbose', 'Fetching plugin via git-clone command: ' + cmd);
         var d = Q.defer();
 
         child_process.exec(cmd, function(err, stdout, stderr) {
@@ -52,7 +65,7 @@ module.exports = {
             }
         });
         return d.promise.then(function() {
-            require('../../plugman').emit('verbose', 'Plugin "' + plugin_git_url + '" fetched.');
+            events.emit('verbose', 'Plugin "' + plugin_git_url + '" fetched.');
             // Check out the specified revision, if provided.
             if (git_ref) {
                 var cmd = util.format('git checkout "%s"', git_ref);
@@ -62,7 +75,7 @@ module.exports = {
                     else d2.resolve();
                 });
                 return d2.promise.then(function() {
-                    require('../../plugman').emit('log', 'Plugin "' + plugin_git_url + '" checked out to git ref "' + git_ref + '".');
+                    events.emit('log', 'Plugin "' + plugin_git_url + '" checked out to git ref "' + git_ref + '".');
                 });
             }
         }).then(function() {
@@ -76,27 +89,12 @@ module.exports = {
             // TODO: what if a plugin dependended on different subdirectories of the same plugin? this would fail.
             // should probably copy over entire plugin git repo contents into plugins_dir and handle subdir seperately during install.
             var plugin_dir = path.join(plugins_dir, plugin_id);
-            require('../../plugman').emit('verbose', 'Copying fetched plugin over "' + plugin_dir + '"...');
+            events.emit('verbose', 'Copying fetched plugin over "' + plugin_dir + '"...');
             shell.cp('-R', path.join(tmp_dir, '*'), plugin_dir);
 
-            require('../../plugman').emit('verbose', 'Plugin "' + plugin_id + '" fetched.');
+            events.emit('verbose', 'Plugin "' + plugin_id + '" fetched.');
             return plugin_dir;
         });
-    },
-
-    // List the directories in the path, ignoring any files, .svn, etc.
-    findPlugins:function(plugins_dir) {
-        var plugins = [],
-            stats;
-
-        if (fs.existsSync(plugins_dir)) {
-            plugins = fs.readdirSync(plugins_dir).filter(function (fileName) {
-               stats = fs.statSync(path.join(plugins_dir, fileName));
-               return fileName != '.svn' && fileName != 'CVS' && stats.isDirectory();
-            });
-        }
-
-        return plugins;
     }
 };
 

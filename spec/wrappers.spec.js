@@ -2,7 +2,7 @@ var Q = require('q'),
     plugman = require('../plugman');
 
 describe('callback wrapper', function() {
-    var calls = ['install', 'uninstall', 'fetch', 'config', 'owner', 'adduser', 'publish', 'unpublish', 'search', 'info'];
+    var calls = ['install', 'uninstall', 'fetch', 'config', 'owner', 'adduser', 'publish', 'unpublish', 'search', 'info', 'create', 'platform'];
     for (var i = 0; i < calls.length; i++) {
         var call = calls[i];
 
@@ -19,7 +19,7 @@ describe('callback wrapper', function() {
             });
 
             it('should call the callback on success', function(done) {
-                raw.andReturn(Q());
+                raw.andReturn(Q(1));
                 plugman[call](function(err) {
                     expect(err).toBeUndefined();
                     done();
@@ -27,7 +27,7 @@ describe('callback wrapper', function() {
             });
 
             it('should call the callback with the error on failure', function(done) {
-                raw.andReturn(Q.reject(new Error('junk')));
+                raw.andCallFake(function() { return Q.reject(new Error('junk'))});
                 plugman[call](function(err) {
                     expect(err).toEqual(new Error('junk'));
                     done();

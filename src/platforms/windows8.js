@@ -20,7 +20,10 @@
 var common = require('./common'),
     path = require('path'),
     glob = require('glob'),
-    w8jsproj = require('../util/w8jsproj');
+    shell = require('shelljs'),
+    fs = require('fs'),
+    w8jsproj = require('../util/w8jsproj'),
+    events = require('../events'),
     xml_helpers = require('../util/xml-helpers');
 
 
@@ -45,24 +48,87 @@ module.exports = {
         install:function(source_el, plugin_dir, project_dir, plugin_id, project_file) {
             var targetDir = source_el.attrib['target-dir'] || '';
             var dest = path.join('www', 'plugins', plugin_id, targetDir, path.basename(source_el.attrib['src']));
-            common.copyFile(plugin_dir, source_el.attrib['src'], project_dir, dest);
+
+            common.copyNewFile(plugin_dir, source_el.attrib['src'], project_dir, dest);
             // add reference to this file to jsproj.
             project_file.addSourceFile(dest);
         },
         uninstall:function(source_el, project_dir, plugin_id, project_file) {
             var dest = path.join('www', 'plugins', plugin_id,
-                                 source_el.attrib['target-dir'] ? source_el.attrib['target-dir'] : '', 
+                                 source_el.attrib['target-dir'] ? source_el.attrib['target-dir'] : '',
                                  path.basename(source_el.attrib['src']));
             common.removeFile(project_dir, dest);
             // remove reference to this file from csproj.
             project_file.removeSourceFile(dest);
         }
     },
-    "resource-file":{
-        install:function(el, plugin_dir, project_dir) {
-            require('../../plugman').emit('verbose', 'resource-file is not supported for Windows 8');
+    "header-file": {
+        install:function(source_el, plugin_dir, project_dir, plugin_id) {
+            events.emit('verbose', 'header-fileinstall is not supported for Windows 8');
         },
-        uninstall:function(el, project_dir) {
+        uninstall:function(source_el, project_dir, plugin_id) {
+            events.emit('verbose', 'header-file.uninstall is not supported for Windows 8');
         }
+    },
+    "resource-file":{
+        install:function(el, plugin_dir, project_dir, plugin_id, project_file) {
+            events.emit('verbose', 'resource-file is not supported for Windows 8');
+        },
+        uninstall:function(el, project_dir, plugin_id, project_file) {
+        }
+    },
+    "lib-file": {
+        install:function(el, plugin_dir, project_dir, plugin_id, project_file) { 
+            var inc  = el.attrib['Include'];
+            project_file.addSDKRef(inc);
+        },
+        uninstall:function(el, project_dir, plugin_id, project_file) {
+            events.emit('verbose', 'windows8 lib-file uninstall :: ' + plugin_id);
+            var inc = el.attrib['Include'];
+            project_file.removeSDKRef(inc);
+        }
+    },
+    "framework": {
+        install:function(el, plugin_dir, project_dir, plugin_id, project_file) {
+            events.emit('verbose', 'windows8 framework install :: ' + plugin_id);
+
+            var src = el.attrib['src'];
+            var dest = src; // if !isCustom, we will just add a reference to the file in place
+            // technically it is not possible to get here without isCustom == true -jm
+            // var isCustom = el.attrib.custom == "true";
+            var type = el.attrib["type"];
+
+            if(type == "projectReference") {
+                project_file.addProjectReference(path.join(plugin_dir,src));
+            }
+            else {
+                // if(isCustom) {}
+                dest = path.join('plugins', plugin_id, path.basename(src));
+                common.copyFile(plugin_dir, src, project_dir, dest);
+                project_file.addReference(dest,src);
+            }
+
+        },
+        uninstall:function(el, project_dir, plugin_id, project_file) {
+            events.emit('verbose', 'windows8 framework uninstall :: ' + plugin_id  );
+
+            var src = el.attrib['src'];
+            // technically it is not possible to get here without isCustom == true -jm
+            // var isCustom = el.attrib.custom == "true"; 
+            var type = el.attrib["type"];
+            // unfortunately we have to generate the plugin_dir path because it is not passed to uninstall
+            var plugin_dir = path.join(project_dir,"cordova/plugins",plugin_id,src);
+
+            if(type == "projectReference") {
+                project_file.removeProjectReference(plugin_dir);
+            }
+            else {
+                // if(isCustom) {  }  
+                var targetPath = path.join('plugins', plugin_id);
+                common.removeFile(project_dir, targetPath);
+                project_file.removeReference(src);
+            }
+        }
+
     }
 };
